@@ -1,0 +1,140 @@
+"""
+===========================================
+BÀI TẬP: TRÍCH XUẤT DỮ LIỆU HÓA ĐƠN VỚI AI
+===========================================
+Ứng dụng này dành cho sinh viên kế toán
+Dùng AI (Pytesseract OCR) để đọc chữ từ ảnh hóa đơn
+Sau đó trích xuất thông tin: ngày tháng, số tiền, tính thuế
+"""
+
+import re
+from datetime import datetime
+
+# ============ BƯỚC 1: QUÉT CHỮ TỪ ẢNH HÓA ĐƠN ============
+# Trong thực tế, bạn sẽ dùng pytesseract để quét ảnh thực
+# Đoạn code này chỉ là giả lập kết quả quét
+
+# Giả sử đây là kết quả AI quét từ ảnh hóa đơn
+ket_qua_ocr = "HOA DON GTGT - Ngay: 05/05/2026 - Tong tien: 500.000 VND - Thue GTGT: 10%"
+
+print("=" * 50)
+print("📄 DỮ LIỆU THÔNG TIN HÓA ĐƠN")
+print("=" * 50)
+print(f"\n✓ Dữ liệu thô từ AI quét ảnh:")
+print(f"  {ket_qua_ocr}\n")
+
+
+# ============ BƯỚC 2: TRÍCH XUẤT NGÀY THÁNG ============
+def trich_xuat_ngay(text):
+    """
+    Hàm tách lấy ngày tháng từ text
+    Tìm kiếm format: DD/MM/YYYY
+    Trả về: ngày tháng hoặc None nếu không tìm thấy
+    """
+    # regex pattern: tìm đúng 2 chữ số / 2 chữ số / 4 chữ số
+    pattern = r'(\d{2}/\d{2}/\d{4})'
+    ket_qua = re.search(pattern, text)
+    
+    if ket_qua:
+        return ket_qua.group(1)  # Trả về chuỗi ngày tháng tìm được
+    return None
+
+
+# ============ BƯỚC 3: TRÍCH XUẤT SỐ TIỀN ============
+def trich_xuat_so_tien(text):
+    """
+    Hàm tách lấy số tiền từ text
+    Tìm kiếm format: XXX.XXX hay XXX,XXX
+    Trả về: số tiền (kiểu số) hoặc None nếu không tìm thấy
+    """
+    # regex pattern: tìm những chuỗi số có dấu chấm hoặc phẩy
+    pattern = r'(\d+[\.\,]\d+)'
+    ket_qua = re.search(pattern, text)
+    
+    if ket_qua:
+        so_tien_text = ket_qua.group(1)
+        # Xóa dấu chấm hay phẩy để chuyển thành số
+        so_tien_text = so_tien_text.replace(".", "").replace(",", "")
+        return int(so_tien_text)
+    return None
+
+
+# ============ BƯỚC 4: TRÍCH XUẤT TỶ LỆ THUẾ ============
+def trich_xuat_thue(text):
+    """
+    Hàm tách lấy tỷ lệ thuế từ text
+    Tìm kiếm format: XX% (ví dụ: 10%)
+    Trả về: tỷ lệ thuế (kiểu số, ví dụ 0.1) hoặc None
+    """
+    # regex pattern: tìm số + dấu %
+    pattern = r'(\d+)%'
+    ket_qua = re.search(pattern, text)
+    
+    if ket_qua:
+        thue_phan_tram = int(ket_qua.group(1))
+        return thue_phan_tram / 100  # Chuyển % thành hệ số (10% = 0.1)
+    return None
+
+
+# ============ BƯỚC 5: TÍNH TOÁN CHỈ TIÊU KẾ TOÁN ============
+def tinh_toan_chi_tieu(so_tien, thue_suat):
+    """
+    Hàm tính các chỉ tiêu kế toán:
+    - Tiền thuế GTGT
+    - Tổng cộng (tiền hàng + thuế)
+    """
+    tien_thue = so_tien * thue_suat
+    tong_cong = so_tien + tien_thue
+    
+    return {
+        'tien_hang': so_tien,
+        'tien_thue': tien_thue,
+        'tong_cong': tong_cong
+    }
+
+
+# ============ BƯỚC 6: THỰC THI - GỌI CÁC HÀM ============
+# Trích xuất từng thông tin từ text OCR
+ngay_thang = trich_xuat_ngay(ket_qua_ocr)
+so_tien = trich_xuat_so_tien(ket_qua_ocr)
+thue_suat = trich_xuat_thue(ket_qua_ocr)
+
+print("📋 THÔNG TIN TRÍCH XUẤT ĐƯỢC:")
+print("-" * 50)
+
+# In ra ngày tháng nếu tìm thấy
+if ngay_thang:
+    print(f"📅 Ngày hóa đơn: {ngay_thang}")
+else:
+    print(f"⚠️  Không tìm thấy ngày tháng")
+
+# In ra số tiền nếu tìm thấy
+if so_tien:
+    print(f"💰 Số tiền hàng: {so_tien:,} VND")
+else:
+    print(f"⚠️  Không tìm thấy số tiền")
+
+# In ra tỷ lệ thuế nếu tìm thấy
+if thue_suat:
+    print(f"🏛️  Tỷ lệ thuế GTGT: {thue_suat*100:.0f}%")
+else:
+    print(f"⚠️  Không tìm thấy tỷ lệ thuế (mặc định: 0%)")
+    thue_suat = 0
+
+print("-" * 50)
+
+# ============ BƯỚC 7: TÍNH TOÁN CHỈ TIÊU ============
+if so_tien and so_tien > 0:
+    chi_tieu = tinh_toan_chi_tieu(so_tien, thue_suat if thue_suat else 0.1)
+    
+    print("📊 CHỈ TIÊU KỀ TOÁN:")
+    print("-" * 50)
+    print(f"  Tiền hàng:        {chi_tieu['tien_hang']:>15,} VND")
+    print(f"  Tiền thuế GTGT:   {chi_tieu['tien_thue']:>15,.0f} VND")
+    print(f"  ─────────────────────────────────")
+    print(f"  Tổng cộng:        {chi_tieu['tong_cong']:>15,.0f} VND")
+    print("=" * 50)
+else:
+    print("❌ Không thể tính toán (thiếu dữ liệu)")
+
+print("\n✅ Hoàn thành xử lý hóa đơn!")
