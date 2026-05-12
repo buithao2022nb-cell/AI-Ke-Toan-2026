@@ -1,0 +1,114 @@
+import streamlit as st
+import pandas as pd
+import numpy as np
+import joblib
+
+# Thiết lập giao diện trang web
+st.set_page_config(page_title="Hệ thống Dự báo Phá sản", page_icon="🏦", layout="wide")
+
+# Hàm tải mô hình từ bộ nhớ
+def load_resources():
+    m = joblib.load('models/bankruptcy_model.pkl')
+    s = joblib.load('models/scaler.pkl')
+    p = joblib.load('models/pca.pkl')
+    f = joblib.load('models/feature_list.pkl')
+    return m, s, p, f
+
+st.title("🛡️ Phân tích & Dự báo Rủi ro Phá sản Doanh nghiệp")
+st.markdown("---")
+
+try:
+    model, scaler, pca, feature_list = load_resources()
+
+    tab1, tab2 = st.tabs(["📝 Phân tích 1 Doanh nghiệp", "📊 Phân tích Dữ liệu Lớn"])
+
+    with tab1:
+        st.sidebar.header("📋 Nhập chỉ số tài chính")
+        user_inputs = []
+        for feature in feature_list:
+            val = st.sidebar.number_input(f"{feature}", value=0.5, step=0.01)
+            user_inputs.append(val)
+
+        if st.button("Phân tích Sức khỏe Tài chính", key="single"):
+            data_input = np.array([user_inputs])
+            data_scaled = scaler.transform(data_input)
+            data_pca = pca.transform(data_scaled)
+            
+            probability = model.predict_proba(data_pca)[0][1]
+            prediction = model.predict(data_pca)[0]
+
+            st.subheader("📊 Kết quả đánh giá:")
+            if prediction == 1:
+                st.error(f"*CẢNH BÁO:* Doanh nghiệp có nguy cơ PHÁ SẢN cao.")
+                st.write(f"Xác suất rủi ro: *{probability:.2%}*")
+            else:
+                st.success(f"*AN TOÀN:* Doanh nghiệp có chỉ số tài chính ổn định.")
+                st.write(f"Xác suất rủi ro thấp: *{probability:.2%}*")
+            
+            st.progress(probability)
+            
+            st.info("💡 *Giải thích kỹ thuật:* Mô hình đã sử dụng PCA để giảm từ số lượng lớn biến xuống còn ít biến hơn mà vẫn giữ được độ chính xác tối ưu.")
+
+            st.markdown("---")
+            st.subheader("📈 Trực quan hóa Phân tích")
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                st.markdown("*Biểu đồ Xác suất*")
+                prob_df = pd.DataFrame({
+                    "Phân loại": ["Nguy cơ Phá sản", "An toàn"],
+                    "Mức độ (%)": [probability * 100, (1 - probability) * 100]
+                }).set_index("Phân loại")
+                st.bar_chart(prob_df, color=["#FF4B4B"])
+
+            with col2:
+                st.markdown("*Top 10 Chỉ số Đầu vào*")
+                feat_df = pd.DataFrame({
+                    "Giá trị Nhập": user_inputs[:10]
+                }, index=feature_list[:10])
+                st.bar_chart(feat_df, color=["#1f77b4"])
+
+    with tab2:
+        st.subheader("📁 Phân tích tập dữ liệu lớn")
+        st.write("Dùng tập dữ liệu khổng lồ bạn đã gửi (dữ-liệu-lớn.xlsx) để dự báo hàng loạt toàn bộ các công ty.")
+        
+        if st.button("Chạy dự báo trên toàn bộ Dữ Liệu Lớn", key="batch"):
+            with st.spinner("Đang xử lý tập dữ liệu lớn..."):
+                try:
+                    df = pd.read_excel('dữ-liệu-lớn.xlsx')
+                    X = df.drop('bankrupt', axis=1, errors='ignore')
+                    
+                    X_input = X[feature_list] if set(feature_list).issubset(X.columns) else X
+                    
+                    data_scaled = scaler.transform(X_input)
+                    data_pca = pca.transform(data_scaled)
+                    
+                    probabilities = model.predict_proba(data_pca)[:, 1]
+                    predictions = model.predict(data_pca)
+                    
+                    results_df = df.copy()
+                    results_df['Trạng thái dự báo'] = ["Phá sản" if p == 1 else "An toàn" for p in predictions]
+                    results_df['Xác suất Phá sản (%)'] = np.round(probabilities * 100, 2)
+                    
+                    st.success(f"✅ Đã siêu máy tính toán và phân tích xong cho {len(df):,} doanh nghiệp!")
+                    st.dataframe(results_df[['Trạng thái dự báo', 'Xác suất Phá sản (%)'] + list(df.columns)], use_container_width=True)
+                    
+                    st.markdown("---")
+                    st.subheader("📊 Biểu đồ Tổng thể cho Dữ liệu Lớn")
+                    c1, c2 = st.columns(2)
+                    
+                    with c1:
+                        st.markdown("*Tỷ lệ Phân bổ Doanh nghiệp*")
+                        count_df = results_df['Trạng thái dự báo'].value_counts().rename("Số lượng")
+                        st.bar_chart(count_df, color=["#ffaa00"])
+                    with c2:
+                        st.markdown("*Biểu đồ Phân bổ Xác suất Rủi ro qua các công ty*")
+                        hist_data = np.histogram(results_df['Xác suất Phá sản (%)'], bins=20)[0]
+                        st.bar_chart(pd.DataFrame(hist_data, columns=["Số lượng DN"]))
+
+                except Exception as e:
+                    st.error(f"Lỗi khi đọc file hoặc phân tích: {str(e)}")
+
+except FileNotFoundError:
+    st.warning("⚠️ Không tìm thấy mô hình! Vui lòng chạy file train_model.py trong VS Code trước.")
+    
